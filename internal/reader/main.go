@@ -2,31 +2,48 @@ package reader
 
 import (
 	"encoding/csv"
-	"fmt"
-	"io"
+	"log"
 	"os"
 	"path/filepath"
+
+	"github.com/singh422/FinanceApp/internal/source"
+	"github.com/singh422/FinanceApp/internal/util"
 )
 
 type Reader struct {
-	directoryPath string
+	DirectoryPath string
 }
 
-func (r *Reader) readCSVFiles(directoryPath string) error {
+type FileInfo struct {
+	Records  [][]string
+	Source   source.Source
+	FileName string
+}
+
+func (r *Reader) ReadCSVFiles(directoryPath string) ([]*FileInfo, error) {
+
+	var fileInfos []*FileInfo
 	files, err := r.getCSVFiles(directoryPath)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	for _, file := range files {
-		fmt.Printf("Reading file: %s\n", file)
-		err := r.readCSVFile(file)
+		// fmt.Printf("Reading file: %s\n", file)
+		fileInfo, err := r.readCSVFile(file)
 		if err != nil {
-			return err
+			return nil, err
+		}
+
+		if fileInfo.Source == source.Unknown {
+			log.Printf("WARNING:Skipping file: [%s], cannot identify source", file)
+		} else {
+			fileInfos = append(fileInfos, fileInfo)
+			log.Printf("INFO:Successfully read file [%s] for source [%s]. Found [%d] records.", file, fileInfo.Source, len(fileInfo.Records))
 		}
 	}
 
-	return nil
+	return fileInfos, nil
 }
 
 func (r *Reader) getCSVFiles(directoryPath string) ([]string, error) {
@@ -35,6 +52,10 @@ func (r *Reader) getCSVFiles(directoryPath string) ([]string, error) {
 	err := filepath.Walk(directoryPath, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
+		}
+
+		if info != nil && info.IsDir() && info.Name() == "Output Reports" {
+			return filepath.SkipDir
 		}
 
 		if !info.IsDir() && filepath.Ext(path) == ".csv" {
@@ -51,33 +72,36 @@ func (r *Reader) getCSVFiles(directoryPath string) ([]string, error) {
 	return csvFiles, nil
 }
 
-func (r *Reader) readCSVFile(filePath string) error {
+func (r *Reader) readCSVFile(filePath string) (*FileInfo, error) {
 	file, err := os.Open(filePath)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer file.Close()
 
 	reader := csv.NewReader(file)
 
-	for {
-		record, err := reader.Read()
-		if err == io.EOF {
-			break
-		} else if err != nil {
-			return err
-		}
+	records, err := reader.ReadAll()
 
-		fmt.Println(record)
+	if err != nil {
+		return nil, err
 	}
 
-	return nil
+	return &FileInfo{
+		FileName: filePath,
+		Records:  records,
+		Source:   parseSourceFromFileName(filePath),
+	}, nil
 }
 
-func main() {
-	directoryPath := "/path/to/csv/files"
-	err := readCSVFiles(directoryPath)
-	if err != nil {
-		fmt.Println("Error:", err)
+func parseSourceFromFileName(filePath string) source.Source {
+	sources := source.GetAllSources()
+
+	for _, src := range sources {
+		if util.CaseInsensitiveSubstring(filePath, src.String()) {
+			return src
+		}
 	}
+
+	return source.Unknown
 }
