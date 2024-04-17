@@ -32,8 +32,10 @@ func ConvertRecord(user string, src source.Source, record []string) (*Expense, e
 	switch src {
 	case source.Chase:
 		return convertChaseRecord(record)
+	case source.ChaseShared:
+		return convertChaseSharedRecord(record)
 	case source.AMEX:
-		return convertAmexRecord(record)
+		return convertAmexRecord(user, record)
 	case source.Apple:
 		return convertAppleRecord(record)
 	case source.Discover:
@@ -46,8 +48,13 @@ func ConvertRecord(user string, src source.Source, record []string) (*Expense, e
 	return nil, fmt.Errorf("ERROR: Unrecognized source, cannot convert record %v", record)
 }
 
-func convertAmexRecord(record []string) (*Expense, error) {
-	amt, err := strconv.ParseFloat(record[2], 64)
+func convertAmexRecord(user string, record []string) (*Expense, error) {
+	offset := 0
+	if user == "Avantika Bagri" {
+		offset = 2
+	}
+
+	amt, err := strconv.ParseFloat(record[2+offset], 64)
 	if err != nil {
 		return nil, err
 	}
@@ -65,7 +72,7 @@ func convertAmexRecord(record []string) (*Expense, error) {
 		Description: record[1],
 		Date:        parsedTime,
 		Metadata: &Metadata{
-			BankCategory: record[10],
+			BankCategory: record[10+offset],
 		},
 	}
 
@@ -141,6 +148,8 @@ func convertChaseRecord(record []string) (*Expense, error) {
 		expenseType = expensetype.Payment
 	} else if bankType == "Return" {
 		expenseType = expensetype.Credit
+	} else if bankType == "Adjustment" {
+		expenseType = expensetype.Credit
 	} else {
 		log.Fatalf("FATAL: Unrecognized original BankType for Chase please add correct Type.")
 	}
@@ -149,6 +158,49 @@ func convertChaseRecord(record []string) (*Expense, error) {
 		Type:        expenseType,
 		Source:      source.Chase,
 		Amount:      -1 * amt,
+		Description: record[2],
+		Date:        parsedTime,
+		Metadata: &Metadata{
+			BankCategory: record[3],
+			BankType:     bankType,
+		},
+	}
+
+	return &expense, nil
+}
+
+func convertChaseSharedRecord(record []string) (*Expense, error) {
+	amt, err := strconv.ParseFloat(record[5], 64)
+	if err != nil {
+		return nil, err
+	}
+
+	dateString := record[0]
+	parsedTime, err := time.Parse("01/02/2006", dateString)
+	if err != nil {
+		fmt.Println("Error:", err)
+		return nil, err
+	}
+
+	bankType := record[4]
+	expenseType := expensetype.Expense
+
+	if bankType == "Sale" {
+		expenseType = expensetype.Expense
+	} else if bankType == "Payment" {
+		expenseType = expensetype.Payment
+	} else if bankType == "Return" {
+		expenseType = expensetype.Credit
+	} else if bankType == "Adjustment" {
+		expenseType = expensetype.Credit
+	} else {
+		log.Fatalf("FATAL: Unrecognized original BankType for Chase Shared please add correct Type.")
+	}
+
+	expense := Expense{
+		Type:        expenseType,
+		Source:      source.ChaseShared,
+		Amount:      (-1 * amt) / 2,
 		Description: record[2],
 		Date:        parsedTime,
 		Metadata: &Metadata{
@@ -240,7 +292,7 @@ func convertVenmoRecord(user string, record []string) (*Expense, error) {
 	fromPerson := record[6]
 	toPerson := record[7]
 
-	description := fmt.Sprintf("Note: %s, From: %s, To: %s", record[5], fromPerson, toPerson)
+	description := fmt.Sprintf("%s - %s From: %s, To: %s", record[5], bankType, fromPerson, toPerson)
 
 	expense := Expense{
 		Source:      source.Venmo,
@@ -249,6 +301,10 @@ func convertVenmoRecord(user string, record []string) (*Expense, error) {
 		Metadata: &Metadata{
 			BankType: bankType,
 		},
+	}
+
+	if amt < 0 {
+		amt = amt * -1
 	}
 
 	if (bankType == "Charge" && fromPerson == user) || (bankType == "Payment" && toPerson == user) {

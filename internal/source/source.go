@@ -3,13 +3,14 @@ package source
 type Source string
 
 const (
-	AMEX     Source = "amex"
-	Apple    Source = "apple"
-	Chase    Source = "chase"
-	Discover Source = "discover"
-	Paypal   Source = "paypal"
-	Venmo    Source = "venmo"
-	Unknown  Source = "unknown"
+	AMEX        Source = "amex"
+	Apple       Source = "apple"
+	Chase       Source = "chase"
+	ChaseShared Source = "chase_shared"
+	Discover    Source = "discover"
+	Paypal      Source = "paypal"
+	Venmo       Source = "venmo"
+	Unknown     Source = "unknown"
 )
 
 func (s Source) String() string {
@@ -20,6 +21,8 @@ func (s Source) String() string {
 		return "Apple"
 	case Chase:
 		return "Chase"
+	case ChaseShared:
+		return "Chase Shared"
 	case Discover:
 		return "Discover"
 	case Paypal:
@@ -37,6 +40,7 @@ func GetAllSources() []Source {
 	return []Source{
 		AMEX,
 		Apple,
+		ChaseShared,
 		Chase,
 		Discover,
 		Paypal,
